@@ -36,6 +36,50 @@ BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CONFIG_FILE = os.path.join(BASE_DIR, "config.json")
 PROFILES_FILE = os.path.join(BASE_DIR, "profiles.json")
 GAME_FILE = os.path.join(BASE_DIR, "game_save.json")
+SETTINGS_FILE = os.path.join(BASE_DIR, "settings.json")
+
+STARTUP_FOLDER = os.path.join(os.environ.get("APPDATA", BASE_DIR), "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
+STARTUP_BAT_NAME = "MultiClicker_AutoStart.bat"
+
+AVAILABLE_THEMES = ["darkly", "cyborg", "superhero", "solar", "vapor", "cosmo"]
+
+
+def load_app_settings():
+    if os.path.exists(SETTINGS_FILE):
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                defaults = {"theme": "darkly", "toasts_enabled": True}
+                defaults.update(data)
+                return defaults
+        except Exception:
+            pass
+    return {"theme": "darkly", "toasts_enabled": True}
+
+
+def save_app_settings(data):
+    try:
+        with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        print("Erreur sauvegarde settings:", e)
+
+
+def is_startup_enabled():
+    return os.path.exists(os.path.join(STARTUP_FOLDER, STARTUP_BAT_NAME))
+
+
+def set_startup_enabled(enabled):
+    path = os.path.join(STARTUP_FOLDER, STARTUP_BAT_NAME)
+    if enabled:
+        script_path = os.path.join(BASE_DIR, "multiclicker.py")
+        content = f'@echo off\ncd /d "{BASE_DIR}"\nstart "" pythonw "{script_path}"\n'
+        os.makedirs(STARTUP_FOLDER, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(content)
+    else:
+        if os.path.exists(path):
+            os.remove(path)
 
 # ---- Mise a jour automatique via GitHub ----
 APP_VERSION = "1.0.0"
@@ -448,6 +492,8 @@ ACHIEVEMENTS = [
      "desc": "Effectue ton premier Rebirth.", "check": lambda s: s["rebirths"] >= 1},
     {"id": "five_rebirth", "name": "Cycle Éternel", "icon": "🌀",
      "desc": "Effectue 5 Rebirths.", "check": lambda s: s["rebirths"] >= 5},
+    {"id": "easter_egg", "name": "Le Ninja Libanais", "icon": "🥷",
+     "desc": "Un secret que seul Wel connaissait...", "check": lambda s: s.get("easter_egg_found", False)},
 ]
 
 
@@ -463,6 +509,7 @@ def default_game_state():
         "achievements_unlocked": [],
         "shards": 0,
         "rebirths": 0,
+        "easter_egg_found": False,
     }
 
 
@@ -571,6 +618,12 @@ class GameState:
         self.data["real_actions_total"] += 1
         self.data["real_actions_pending"] += 1
 
+    def trigger_easter_egg(self):
+        if not self.data.get("easter_egg_found", False):
+            self.data["easter_egg_found"] = True
+            return True
+        return False
+
     def tick(self, dt):
         prod = self.total_production()
         if prod > 0 and dt > 0:
@@ -605,6 +658,8 @@ class AutoClickerApp:
         self.hotkey_labels = {}
         self.action_labels = {}
         self._game_save_counter = 0
+        self._egg_clicks = []
+        self.settings = load_app_settings()
 
         # ---> Pour ajouter un nouveau systeme d'automatisation, ajoute-le ici <---
         self.modules = [
@@ -631,12 +686,16 @@ class AutoClickerApp:
 
     # ================= UI GENERALE =================
     def build_ui(self):
+        self.apply_notebook_style()
+
         header = tb.Frame(self.root, bootstyle="dark")
         header.pack(fill="x")
         title_row = tb.Frame(header, bootstyle="dark")
         title_row.pack(fill="x", padx=20, pady=(18, 0))
-        tb.Label(title_row, text="⚡ Multi-Clicker", font=("Segoe UI", 20, "bold"),
-                  bootstyle="inverse-dark").pack(side="left")
+        title_lbl = tb.Label(title_row, text="⚡ Multi-Clicker", font=("Segoe UI", 20, "bold"),
+                               bootstyle="inverse-dark", cursor="hand2")
+        title_lbl.pack(side="left")
+        title_lbl.bind("<Button-1>", self.on_title_click)
         tb.Button(title_row, text="Vérifier les mises à jour", bootstyle="outline-info",
                    command=lambda: self.check_for_updates(manual=True)).pack(side="right")
         tb.Label(header, text=f"Système modulaire d'automatisation de clics et de touches • v{APP_VERSION}",
@@ -652,6 +711,28 @@ class AutoClickerApp:
                   font=("Segoe UI", 8, "bold"), bootstyle="warning").pack(side="left")
         tb.Button(footer, text="Réinitialiser toutes les touches", bootstyle="outline-danger",
                    command=self.reset_all_hotkeys).pack(side="right")
+
+    def apply_notebook_style(self):
+        """Met en valeur l'onglet actuellement selectionne (fond colore), quel que soit
+        le notebook (principal ou sous-notebooks) puisque le style s'applique globalement."""
+        style = self.root.style
+        style.configure("TNotebook.Tab", padding=(14, 8))
+        style.map("TNotebook.Tab",
+                  background=[("selected", "#5865F2")],
+                  foreground=[("selected", "#ffffff")])
+
+    def on_title_click(self, event=None):
+        """Easter egg : clique 7 fois rapidement sur le titre."""
+        now = time.time()
+        self._egg_clicks = [t for t in self._egg_clicks if now - t < 1.5] + [now]
+        if len(self._egg_clicks) >= 7:
+            self._egg_clicks = []
+            found = self.game.trigger_easter_egg()
+            if found:
+                self._process_game_events(0)
+                self.refresh_game_ui()
+                self.game.save()
+            self.show_toast("🇱🇧 Yalla Wel ! Dattebayo ! 🍜🥷", "warning")
 
     def populate_notebook(self):
         for tab_id in self.notebook.tabs():
@@ -676,6 +757,10 @@ class AutoClickerApp:
         feedback_frame = tb.Frame(self.notebook, padding=20)
         self.notebook.add(feedback_frame, text="  💬 Aide  ")
         self.build_feedback_tab(feedback_frame)
+
+        settings_frame = tb.Frame(self.notebook, padding=20)
+        self.notebook.add(settings_frame, text="  ⚙️ Paramètres  ")
+        self.build_settings_tab(settings_frame)
 
         future_frame = tb.Frame(self.notebook, padding=20)
         self.notebook.add(future_frame, text="  + Ajouter  ")
@@ -1130,6 +1215,8 @@ class AutoClickerApp:
             self.rebirth_btn.config(state="disabled")
 
     def show_toast(self, message, style="info"):
+        if not self.settings.get("toasts_enabled", True):
+            return
         try:
             from ttkbootstrap.toast import ToastNotification
             ToastNotification(title="Multi-Clicker", message=message, duration=3500, bootstyle=style).show_toast()
@@ -1257,6 +1344,127 @@ class AutoClickerApp:
         self.root.destroy()
         sys.exit(0)
 
+    # ================= PARAMETRES =================
+    def build_settings_tab(self, frame):
+        tb.Label(frame, text="⚙️ Paramètres", font=("Segoe UI", 14, "bold")).pack(anchor="w", pady=(0, 16))
+
+        tb.Label(frame, text="Thème visuel", font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        theme_var = tk.StringVar(value=self.settings.get("theme", "darkly"))
+        theme_combo = tb.Combobox(frame, state="readonly", values=AVAILABLE_THEMES,
+                                    textvariable=theme_var, bootstyle="info")
+        theme_combo.pack(fill="x", pady=(4, 18))
+        theme_combo.bind("<<ComboboxSelected>>", lambda e: self.on_theme_change(theme_var.get()))
+
+        startup_var = tk.BooleanVar(value=is_startup_enabled())
+        tb.Checkbutton(frame, text="Lancer Multi-Clicker au démarrage de Windows",
+                        variable=startup_var, bootstyle="round-toggle",
+                        command=lambda: self.on_toggle_startup(startup_var.get())).pack(anchor="w", pady=(0, 12))
+
+        toast_var = tk.BooleanVar(value=self.settings.get("toasts_enabled", True))
+        tb.Checkbutton(frame, text="Afficher les notifications (succès, mises à jour...)",
+                        variable=toast_var, bootstyle="round-toggle",
+                        command=lambda: self.on_toggle_toasts(toast_var.get())).pack(anchor="w", pady=(0, 24))
+
+        tb.Separator(frame).pack(fill="x", pady=(0, 20))
+
+        tb.Label(frame, text="Zone dangereuse", font=("Segoe UI", 11, "bold"), bootstyle="danger").pack(anchor="w", pady=(0, 10))
+        tb.Button(frame, text="Réinitialiser mes données (déclencheurs, profils, jeu)", bootstyle="outline-warning",
+                   command=self.on_reset_data).pack(anchor="w", pady=(0, 10))
+        tb.Button(frame, text="🗑️ Désinstaller Multi-Clicker de mon PC", bootstyle="danger",
+                   command=self.on_uninstall).pack(anchor="w")
+        tb.Label(frame, text="Supprime définitivement tous les fichiers, dossiers et données de l'application.",
+                  font=("Segoe UI", 8), bootstyle="secondary", wraplength=560, justify="left").pack(anchor="w", pady=(6, 0))
+
+    def on_theme_change(self, theme_name):
+        try:
+            self.root.style.theme_use(theme_name)
+            self.apply_notebook_style()
+            self.settings["theme"] = theme_name
+            save_app_settings(self.settings)
+        except Exception as e:
+            print("Erreur changement theme:", e)
+            self.show_toast("Impossible d'appliquer ce thème.", "danger")
+
+    def on_toggle_startup(self, enabled):
+        try:
+            set_startup_enabled(enabled)
+            self.show_toast("Démarrage automatique activé." if enabled else "Démarrage automatique désactivé.", "info")
+        except Exception as e:
+            print("Erreur toggle startup:", e)
+            self.show_toast("Impossible de modifier le démarrage automatique.", "danger")
+
+    def on_toggle_toasts(self, enabled):
+        self.settings["toasts_enabled"] = enabled
+        save_app_settings(self.settings)
+
+    def on_reset_data(self):
+        from ttkbootstrap.dialogs import Messagebox
+        confirm = Messagebox.yesno(
+            "Ça va effacer tes déclencheurs assignés, tes profils sauvegardés et ta progression "
+            "du jeu Rouages (mais ne désinstalle PAS l'application). Continuer ?",
+            title="Réinitialiser mes données")
+        if confirm != "Yes":
+            return
+        for module in self.modules:
+            if module.active:
+                module.stop()
+            module.hotkey = None
+        for f in (CONFIG_FILE, PROFILES_FILE, GAME_FILE):
+            if os.path.exists(f):
+                os.remove(f)
+        self.game = GameState(self)
+        self.populate_notebook()
+        self.show_toast("Données réinitialisées.", "success")
+
+    def on_uninstall(self):
+        from ttkbootstrap.dialogs import Messagebox
+        confirm = Messagebox.yesno(
+            "Cette action va supprimer DÉFINITIVEMENT Multi-Clicker de ton PC :\n"
+            "• Tous les fichiers de l'application\n"
+            "• Tes configurations, profils et ta progression du jeu\n"
+            "• Le raccourci sur le Bureau et le démarrage automatique\n\n"
+            "Cette action est IRRÉVERSIBLE. Continuer ?",
+            title="⚠️ Désinstaller Multi-Clicker")
+        if confirm != "Yes":
+            return
+        confirm2 = Messagebox.yesno(
+            "Es-tu VRAIMENT sûr ? Il n'y a aucun retour en arrière possible après ça.",
+            title="Dernière confirmation")
+        if confirm2 != "Yes":
+            return
+        self._perform_uninstall()
+
+    def _perform_uninstall(self):
+        install_dir = BASE_DIR
+        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        shortcut_path = os.path.join(desktop, "Multi-Clicker.lnk")
+        startup_path = os.path.join(STARTUP_FOLDER, STARTUP_BAT_NAME)
+        cleanup_bat = os.path.join(os.environ.get("TEMP", BASE_DIR), "multiclicker_uninstall.bat")
+
+        script = (
+            "@echo off\r\n"
+            "timeout /t 2 /nobreak >nul\r\n"
+            f'rmdir /s /q "{install_dir}"\r\n'
+            f'del /f /q "{shortcut_path}" 2>nul\r\n'
+            f'del /f /q "{startup_path}" 2>nul\r\n'
+            'del /f /q "%~f0"\r\n'
+        )
+        try:
+            with open(cleanup_bat, "w", encoding="utf-8") as f:
+                f.write(script)
+            creation_flags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+            subprocess.Popen(["cmd", "/c", cleanup_bat], creationflags=creation_flags)
+        except Exception as e:
+            print("Erreur lancement desinstallation:", e)
+
+        for module in self.modules:
+            if module.active:
+                module.stop()
+        self.kb_listener.stop()
+        self.mouse_listener.stop()
+        self.root.destroy()
+        sys.exit(0)
+
     # ================= SAUVEGARDE / CHARGEMENT CONFIG =================
     def save_config(self):
         data = {module.name: module.to_dict() for module in self.modules}
@@ -1297,6 +1505,7 @@ class AutoClickerApp:
 
 
 if __name__ == "__main__":
-    root = tb.Window(themename="darkly")
+    _startup_settings = load_app_settings()
+    root = tb.Window(themename=_startup_settings.get("theme", "darkly"))
     app = AutoClickerApp(root)
     root.mainloop()
