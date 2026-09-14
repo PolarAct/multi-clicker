@@ -50,49 +50,59 @@ THEME_LABELS = {
 }
 
 
-def build_wels_theme_defs():
-    """Construit les themes personnalises. Import local + tout en try/except :
-    si la version de ttkbootstrap installee n'a pas cette API (ex: ttkbootstrap 2.x),
-    on renvoie une liste vide plutot que de planter tout le programme au demarrage."""
-    try:
-        from ttkbootstrap.style import ThemeDefinition, Colors
-    except Exception as e:
-        print("Themes Wel's indisponibles (API ttkbootstrap incompatible):", e)
-        return []
+# ---- Themes "Wel's" = les themes sombre/clair d'origine, juste l'accent bleu remplace par de l'orange ----
+ACCENT_ORANGE = "#FF7A1A"
+ACCENT_TEXT = "#1E1A16"
 
-    try:
-        dark_colors = Colors(
-            primary="#FF7A1A", secondary="#3B3630", success="#4F9D4A", info="#3B82C4",
-            warning="#F5D547", danger="#E63946", bg="#1E1A16", fg="#F5EDE0",
-            selectbg="#FF7A1A", selectfg="#1E1A16", border="#4A3B2E",
-            inputfg="#F5EDE0", inputbg="#2A241D", light="#F5EDE0", dark="#1E1A16",
-            active="#3A2F22",
-        )
-        light_colors = Colors(
-            primary="#E8650A", secondary="#8A7B6C", success="#3D8B37", info="#2F6DA8",
-            warning="#C99A1D", danger="#C7362F", bg="#F5EDE0", fg="#241E18",
-            selectbg="#E8650A", selectfg="#F5EDE0", border="#D8C9B0",
-            inputfg="#241E18", inputbg="#FFFFFF", light="#F5EDE0", dark="#241E18",
-            active="#EADFC8",
-        )
-        return [
-            ThemeDefinition(name="wels_dark", themetype="dark", colors=dark_colors),
-            ThemeDefinition(name="wels_light", themetype="light", colors=light_colors),
-        ]
-    except Exception as e:
-        print("Erreur construction themes Wel's:", e)
-        return []
+
+def clone_with_orange_accent(style, base_theme, new_name, new_type):
+    """Reprend un theme integre existant tel quel (fonds, gris, etc.) et ne change
+    que la couleur d'accent primaire/selection (bleu -> orange)."""
+    from ttkbootstrap.style import ThemeDefinition, Colors
+    style.theme_use(base_theme)
+    b = style.colors
+    colors = Colors(
+        primary=ACCENT_ORANGE,
+        secondary=b.secondary,
+        success=b.success,
+        info=b.info,
+        warning=b.warning,
+        danger=b.danger,
+        bg=b.bg,
+        fg=b.fg,
+        selectbg=ACCENT_ORANGE,
+        selectfg=ACCENT_TEXT,
+        border=b.border,
+        inputfg=b.inputfg,
+        inputbg=b.inputbg,
+        light=b.light,
+        dark=b.dark,
+        active=b.active,
+    )
+    return ThemeDefinition(name=new_name, themetype=new_type, colors=colors)
 
 
 def register_wels_themes(style):
-    """Renvoie True si au moins un theme Wel's a ete enregistre avec succes."""
+    """Enregistre les variantes Wel's. Renvoie True si au moins une a reussi.
+    Tout en try/except : si l'API n'est pas compatible, l'app continue quand meme
+    (repli automatique sur un theme integre standard)."""
+    try:
+        from ttkbootstrap.style import ThemeDefinition, Colors  # noqa: F401 (verifie juste la disponibilite)
+    except Exception as e:
+        print("Themes Wel's indisponibles (API ttkbootstrap incompatible):", e)
+        return False
+
     ok = False
-    for theme_def in build_wels_theme_defs():
-        try:
-            style.register_theme(theme_def)
-            ok = True
-        except Exception as e:
-            print("Erreur enregistrement theme:", e)
+    try:
+        style.register_theme(clone_with_orange_accent(style, "darkly", "wels_dark", "dark"))
+        ok = True
+    except Exception as e:
+        print("Erreur creation wels_dark:", e)
+    try:
+        style.register_theme(clone_with_orange_accent(style, "flatly", "wels_light", "light"))
+        ok = True
+    except Exception as e:
+        print("Erreur creation wels_light:", e)
     return ok
 
 
@@ -134,7 +144,7 @@ def set_startup_enabled(enabled):
             os.remove(path)
 
 # ---- Mise a jour automatique via GitHub ----
-APP_VERSION = "1.2.0"
+APP_VERSION = "1.2.1"
 GITHUB_USER = "PolarAct"         # <-- ton pseudo GitHub
 GITHUB_REPO = "multi-clicker"    # <-- le nom de ton depot
 GITHUB_BRANCH = "main"

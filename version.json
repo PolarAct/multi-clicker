@@ -1,4 +1,4 @@
 {
-  "version": "1.2.0",
-  "notes": "Renommage en Wel's Toolbox avec nouveau logo (plume orange). Nouvelle palette de couleurs inspiree de la photo de profil (theme Wel's Sombre/Clair). Correction du bug de mise a jour bloquee (cache GitHub). Retrait de l'easter egg."
+  "version": "1.2.1",
+  "notes": "Correction du theme : on garde le fond noir/sombre d'origine, seul l'accent bleu devient orange (au lieu d'une palette entierement personnalisee). Correction du parametre 'active' manquant qui empechait le lancement."
 }
