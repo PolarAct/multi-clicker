@@ -150,7 +150,7 @@ def set_startup_enabled(enabled):
             os.remove(path)
 
 # ---- Mise a jour automatique via GitHub ----
-APP_VERSION = "1.3.0"
+APP_VERSION = "1.3.1"
 GITHUB_USER = "PolarAct"         # <-- ton pseudo GitHub
 GITHUB_REPO = "multi-clicker"    # <-- le nom de ton depot
 GITHUB_BRANCH = "main"
@@ -808,7 +808,7 @@ class AutoClickerApp:
         self.footer = tb.Frame(self.root)
         self.footer.pack(fill="x", padx=16, pady=(0, 14))
         tb.Label(self.footer, text="Échap = arrêt d'urgence de tous les systèmes actifs",
-                  font=("Segoe UI", 8, "bold"), bootstyle="primary").pack(side="left")
+                  font=("Segoe UI", 8, "bold"), bootstyle="light").pack(side="left")
         tb.Button(self.footer, text="Réinitialiser toutes les touches", bootstyle="outline-secondary",
                    command=self.reset_all_hotkeys).pack(side="right")
 
@@ -879,6 +879,39 @@ class AutoClickerApp:
         except Exception as e:
             print("Erreur style onglets (non bloquant):", e)
 
+    def make_scrollable(self, parent):
+        """Enveloppe un onglet dans une zone qui defile verticalement (molette + barre)
+        des que le contenu depasse la hauteur visible. Renvoie le frame interieur dans
+        lequel construire le contenu normalement."""
+        try:
+            bg = self.root.style.colors.bg
+        except Exception:
+            bg = None
+
+        canvas = tk.Canvas(parent, highlightthickness=0, bd=0)
+        if bg:
+            canvas.configure(bg=bg)
+        scrollbar = tb.Scrollbar(parent, orient="vertical", command=canvas.yview, bootstyle="round")
+        inner = tb.Frame(canvas)
+
+        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        window_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.bind("<Configure>", lambda e: canvas.itemconfig(window_id, width=e.width))
+
+        def _on_enter(_e):
+            canvas.bind_all("<MouseWheel>", lambda ev: canvas.yview_scroll(int(-1 * (ev.delta / 120)), "units"))
+
+        def _on_leave(_e):
+            canvas.unbind_all("<MouseWheel>")
+
+        canvas.bind("<Enter>", _on_enter)
+        canvas.bind("<Leave>", _on_leave)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        return inner
+
     def populate_notebook(self):
         for tab_id in self.notebook.tabs():
             self.notebook.nametowidget(tab_id).destroy()
@@ -893,7 +926,7 @@ class AutoClickerApp:
 
         profiles_frame = tb.Frame(self.notebook, padding=20)
         self.notebook.add(profiles_frame, text="  📂 Profils  ")
-        self.build_profiles_tab(profiles_frame)
+        self.build_profiles_tab(self.make_scrollable(profiles_frame))
 
         game_frame = tb.Frame(self.notebook, padding=16)
         self.notebook.add(game_frame, text="  🎮 Rouages  ")
@@ -901,11 +934,11 @@ class AutoClickerApp:
 
         feedback_frame = tb.Frame(self.notebook, padding=20)
         self.notebook.add(feedback_frame, text="  💬 Aide  ")
-        self.build_feedback_tab(feedback_frame)
+        self.build_feedback_tab(self.make_scrollable(feedback_frame))
 
         settings_frame = tb.Frame(self.notebook, padding=20)
         self.notebook.add(settings_frame, text="  ⚙️ Paramètres  ")
-        self.build_settings_tab(settings_frame)
+        self.build_settings_tab(self.make_scrollable(settings_frame))
 
         future_frame = tb.Frame(self.notebook, padding=20)
         self.notebook.add(future_frame, text="  + Ajouter  ")
@@ -925,7 +958,7 @@ class AutoClickerApp:
             frame = tb.Frame(sub_notebook, padding=20)
             icon = MODULE_ICONS.get(module.name, "⚙️")
             sub_notebook.add(frame, text=f"  {icon} {module.name}  ")
-            self.build_module_ui(frame, module)
+            self.build_module_ui(self.make_scrollable(frame), module)
 
     # ================= TABS DES SYSTEMES =================
     def build_module_ui(self, frame, module):
@@ -950,7 +983,7 @@ class AutoClickerApp:
                   font=("Segoe UI", 9), bootstyle="secondary").pack(anchor="w")
         hk_value_label = tb.Label(hk_inner, text=display_name(module.hotkey),
                                     font=("Segoe UI", 14, "bold"),
-                                    bootstyle="primary" if module.hotkey else "secondary")
+                                    bootstyle="light" if module.hotkey else "secondary")
         hk_value_label.pack(anchor="w", pady=(2, 10))
         self.hotkey_labels[module] = hk_value_label
 
@@ -963,14 +996,14 @@ class AutoClickerApp:
 
         if isinstance(module, AlternateClickModule):
             tb.Label(frame, text="Délai entre les clics", font=("Segoe UI", 10, "bold")).pack(anchor="w")
-            delay_val_lbl = tb.Label(frame, text=f"{module.delay_ms} ms", bootstyle="primary")
+            delay_val_lbl = tb.Label(frame, text=f"{module.delay_ms} ms", bootstyle="light")
             delay_val_lbl.pack(anchor="w", pady=(2, 6))
 
             def on_delay_change(v, m=module, lbl=delay_val_lbl):
                 m.delay_ms = int(float(v))
                 lbl.config(text=f"{m.delay_ms} ms")
 
-            tb.Scale(frame, from_=0, to=100, orient="horizontal", bootstyle="primary",
+            tb.Scale(frame, from_=0, to=100, orient="horizontal", bootstyle="secondary",
                       value=module.delay_ms, command=on_delay_change).pack(fill="x")
             tb.Label(frame, text="0 ms = vitesse maximale • alterne toujours clic gauche / clic droit",
                       font=("Segoe UI", 8), bootstyle="secondary").pack(anchor="w", pady=(4, 0))
@@ -979,14 +1012,14 @@ class AutoClickerApp:
             self.build_action_picker(frame, module, "Touche / bouton à cliquer")
 
             tb.Label(frame, text="Intervalle entre les clics", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(16, 0))
-            delay_val_lbl = tb.Label(frame, text=f"{module.delay_ms} ms", bootstyle="primary")
+            delay_val_lbl = tb.Label(frame, text=f"{module.delay_ms} ms", bootstyle="light")
             delay_val_lbl.pack(anchor="w", pady=(2, 6))
 
             def on_delay_change2(v, m=module, lbl=delay_val_lbl):
                 m.delay_ms = int(float(v))
                 lbl.config(text=f"{m.delay_ms} ms")
 
-            tb.Scale(frame, from_=1, to=1000, orient="horizontal", bootstyle="primary",
+            tb.Scale(frame, from_=1, to=1000, orient="horizontal", bootstyle="secondary",
                       value=module.delay_ms, command=on_delay_change2).pack(fill="x")
 
         elif isinstance(module, HoldModule):
@@ -1007,14 +1040,14 @@ class AutoClickerApp:
             self.build_action_picker(frame, module, "Touche à appuyer (si mode « touche »)")
 
             tb.Label(frame, text="Intervalle entre les actions", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(16, 0))
-            delay_val_lbl = tb.Label(frame, text=f"{module.interval_sec} s", bootstyle="primary")
+            delay_val_lbl = tb.Label(frame, text=f"{module.interval_sec} s", bootstyle="light")
             delay_val_lbl.pack(anchor="w", pady=(2, 6))
 
             def on_interval_change(v, m=module, lbl=delay_val_lbl):
                 m.interval_sec = int(float(v))
                 lbl.config(text=f"{m.interval_sec} s")
 
-            tb.Scale(frame, from_=5, to=600, orient="horizontal", bootstyle="primary",
+            tb.Scale(frame, from_=5, to=600, orient="horizontal", bootstyle="secondary",
                       value=module.interval_sec, command=on_interval_change).pack(fill="x")
             tb.Label(frame, text="Empêche d'être déconnecté pour inactivité en simulant une activité périodique.",
                       font=("Segoe UI", 8), bootstyle="secondary", wraplength=560, justify="left").pack(anchor="w", pady=(6, 0))
@@ -1022,7 +1055,7 @@ class AutoClickerApp:
     def build_action_picker(self, frame, module, title):
         tb.Label(frame, text=title, font=("Segoe UI", 10, "bold")).pack(anchor="w")
         action_label = tb.Label(frame, text=display_name(module.action_id),
-                                  font=("Segoe UI", 13, "bold"), bootstyle="primary")
+                                  font=("Segoe UI", 13, "bold"), bootstyle="light")
         action_label.pack(anchor="w", pady=(2, 8))
         self.action_labels[module] = action_label
         tb.Button(frame, text="Choisir...", bootstyle="primary",
@@ -1034,7 +1067,7 @@ class AutoClickerApp:
     def start_capture(self, module, field):
         label = self.hotkey_labels[module] if field == "hotkey" else self.action_labels[module]
         self.capture_target = (module, field, label)
-        label.config(text="Appuie sur une touche ou un bouton souris...", bootstyle="primary")
+        label.config(text="Appuie sur une touche ou un bouton souris...", bootstyle="light")
 
     def unassign_hotkey(self, module):
         module.unassign_hotkey()
@@ -1076,7 +1109,7 @@ class AutoClickerApp:
                 module.action_id = identifier
 
             name = display_name(identifier)
-            self.root.after(0, lambda: label.config(text=name, bootstyle="primary"))
+            self.root.after(0, lambda: label.config(text=name, bootstyle="light"))
             self.capture_target = None
             self.save_config()
             return
@@ -1120,7 +1153,7 @@ class AutoClickerApp:
                               "et bascule entre elles en un clic.",
                   font=("Segoe UI", 9), bootstyle="secondary", wraplength=560, justify="left").pack(anchor="w", pady=(4, 16))
 
-        self.profiles_combo = tb.Combobox(frame, state="readonly", bootstyle="primary")
+        self.profiles_combo = tb.Combobox(frame, state="readonly", bootstyle="light")
         self.profiles_combo.pack(fill="x", pady=(0, 10))
         self.refresh_profiles_list()
 
@@ -1192,7 +1225,7 @@ class AutoClickerApp:
     def build_game_tab(self, parent):
         header = tb.Frame(parent, padding=(0, 0, 0, 10))
         header.pack(fill="x")
-        self.game_gears_label = tb.Label(header, text="", font=("Segoe UI", 16, "bold"), bootstyle="primary")
+        self.game_gears_label = tb.Label(header, text="", font=("Segoe UI", 16, "bold"), bootstyle="light")
         self.game_gears_label.pack(anchor="w")
         self.game_prod_label = tb.Label(header, text="", font=("Segoe UI", 9), bootstyle="secondary")
         self.game_prod_label.pack(anchor="w")
@@ -1205,11 +1238,11 @@ class AutoClickerApp:
 
         shop_frame = tb.Frame(sub_notebook, padding=14)
         sub_notebook.add(shop_frame, text="  🛒 Boutique  ")
-        self.build_shop_ui(shop_frame)
+        self.build_shop_ui(self.make_scrollable(shop_frame))
 
         index_frame = tb.Frame(sub_notebook, padding=14)
         sub_notebook.add(index_frame, text="  📖 Index  ")
-        self.build_index_ui(index_frame)
+        self.build_index_ui(self.make_scrollable(index_frame))
 
         rebirth_frame = tb.Frame(sub_notebook, padding=14)
         sub_notebook.add(rebirth_frame, text="  ✨ Rebirth  ")
@@ -1278,7 +1311,7 @@ class AutoClickerApp:
                               "des Éclats permanents qui boostent ta production pour toujours (+2%/Éclat).",
                   font=("Segoe UI", 9), bootstyle="secondary", wraplength=560, justify="left").pack(anchor="w", pady=(4, 16))
 
-        self.rebirth_info_lbl = tb.Label(frame, text="", font=("Segoe UI", 11, "bold"), bootstyle="primary")
+        self.rebirth_info_lbl = tb.Label(frame, text="", font=("Segoe UI", 11, "bold"), bootstyle="light")
         self.rebirth_info_lbl.pack(anchor="w", pady=(0, 10))
 
         self.rebirth_btn = tb.Button(frame, text="Rebirth", bootstyle="primary", command=self.on_rebirth)
@@ -1418,7 +1451,7 @@ class AutoClickerApp:
     def _on_feedback_sent(self, success, error=None):
         self.feedback_send_btn.config(state="normal")
         if success:
-            self.feedback_status_lbl.config(text="✅ Message envoyé, merci !", bootstyle="primary")
+            self.feedback_status_lbl.config(text="✅ Message envoyé, merci !", bootstyle="light")
             self.feedback_text.delete("1.0", "end")
             self.show_toast("Message envoyé avec succès !", "success")
         else:
@@ -1532,7 +1565,7 @@ class AutoClickerApp:
             current_theme_key = next(iter(available_labels))
         theme_var = tk.StringVar(value=available_labels.get(current_theme_key, current_theme_key))
         theme_combo = tb.Combobox(frame, state="readonly", values=list(available_labels.values()),
-                                    textvariable=theme_var, bootstyle="primary")
+                                    textvariable=theme_var, bootstyle="light")
         theme_combo.pack(fill="x", pady=(4, 18))
         theme_combo.bind("<<ComboboxSelected>>",
                            lambda e: self.on_theme_change(self._theme_key_from_label(theme_var.get())))
