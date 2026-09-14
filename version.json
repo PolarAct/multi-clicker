@@ -1,4 +1,4 @@
 {
   "version": "1.3.2",
-  "notes": "Les boutons d'action (Assigner, Choisir, Charger, Enregistrer, Envoyer, Acheter, Rebirth...) ressortent mieux : le reste de l'interface (textes de valeur, sliders, listes) n'est plus orange, seulement les boutons cliquables. Ajout du defilement (molette + barre) sur tous les onglets pouvant deborder (Boutique, Index, systemes d'automatisation, Profils, Aide, Parametres)."
+  "notes": "..."
 }
