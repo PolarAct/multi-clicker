@@ -1,4 +1,4 @@
 {
-  "version": "1.2.1",
-  "notes": "Correction du theme : on garde le fond noir/sombre d'origine, seul l'accent bleu devient orange (au lieu d'une palette entierement personnalisee). Correction du parametre 'active' manquant qui empechait le lancement."
+  "version": "1.3.0",
+  "notes": "Refonte des couleurs : uniformisation noir/orange partout (suppression du bleu/rouge/vert qui restait). Correction de l'anneau de focus orange qui encadrait tout le contenu. Ajout de 2 boutons dans le header : epingler la fenetre au premier plan et mode compact (petite fenetre avec juste les automatisations). Plus d'options de theme dans Parametres (Wel's + themes alternatifs non recolores)."
 }
