@@ -29,7 +29,6 @@ import tkinter as tk
 
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
-from ttkbootstrap.style import ThemeDefinition, Colors
 
 from pynput import mouse, keyboard
 
@@ -52,30 +51,47 @@ THEME_LABELS = {
 
 
 def build_wels_theme_defs():
-    dark_colors = Colors(
-        primary="#FF7A1A", secondary="#3B3630", success="#4F9D4A", info="#3B82C4",
-        warning="#F5D547", danger="#E63946", bg="#1E1A16", fg="#F5EDE0",
-        selectbg="#FF7A1A", selectfg="#1E1A16", border="#4A3B2E",
-        inputfg="#F5EDE0", inputbg="#2A241D", light="#F5EDE0", dark="#1E1A16",
-    )
-    light_colors = Colors(
-        primary="#E8650A", secondary="#8A7B6C", success="#3D8B37", info="#2F6DA8",
-        warning="#C99A1D", danger="#C7362F", bg="#F5EDE0", fg="#241E18",
-        selectbg="#E8650A", selectfg="#F5EDE0", border="#D8C9B0",
-        inputfg="#241E18", inputbg="#FFFFFF", light="#F5EDE0", dark="#241E18",
-    )
-    return [
-        ThemeDefinition(name="wels_dark", themetype="dark", colors=dark_colors),
-        ThemeDefinition(name="wels_light", themetype="light", colors=light_colors),
-    ]
+    """Construit les themes personnalises. Import local + tout en try/except :
+    si la version de ttkbootstrap installee n'a pas cette API (ex: ttkbootstrap 2.x),
+    on renvoie une liste vide plutot que de planter tout le programme au demarrage."""
+    try:
+        from ttkbootstrap.style import ThemeDefinition, Colors
+    except Exception as e:
+        print("Themes Wel's indisponibles (API ttkbootstrap incompatible):", e)
+        return []
+
+    try:
+        dark_colors = Colors(
+            primary="#FF7A1A", secondary="#3B3630", success="#4F9D4A", info="#3B82C4",
+            warning="#F5D547", danger="#E63946", bg="#1E1A16", fg="#F5EDE0",
+            selectbg="#FF7A1A", selectfg="#1E1A16", border="#4A3B2E",
+            inputfg="#F5EDE0", inputbg="#2A241D", light="#F5EDE0", dark="#1E1A16",
+        )
+        light_colors = Colors(
+            primary="#E8650A", secondary="#8A7B6C", success="#3D8B37", info="#2F6DA8",
+            warning="#C99A1D", danger="#C7362F", bg="#F5EDE0", fg="#241E18",
+            selectbg="#E8650A", selectfg="#F5EDE0", border="#D8C9B0",
+            inputfg="#241E18", inputbg="#FFFFFF", light="#F5EDE0", dark="#241E18",
+        )
+        return [
+            ThemeDefinition(name="wels_dark", themetype="dark", colors=dark_colors),
+            ThemeDefinition(name="wels_light", themetype="light", colors=light_colors),
+        ]
+    except Exception as e:
+        print("Erreur construction themes Wel's:", e)
+        return []
 
 
 def register_wels_themes(style):
+    """Renvoie True si au moins un theme Wel's a ete enregistre avec succes."""
+    ok = False
     for theme_def in build_wels_theme_defs():
         try:
             style.register_theme(theme_def)
+            ok = True
         except Exception as e:
             print("Erreur enregistrement theme:", e)
+    return ok
 
 
 def load_app_settings():
@@ -767,12 +783,15 @@ class AutoClickerApp:
     def apply_notebook_style(self):
         """Met en valeur l'onglet actuellement selectionne (fond colore = couleur primaire
         du theme actif), quel que soit le notebook (principal ou sous-notebooks)."""
-        style = self.root.style
-        colors = style.colors
-        style.configure("TNotebook.Tab", padding=(14, 8))
-        style.map("TNotebook.Tab",
-                  background=[("selected", colors.primary)],
-                  foreground=[("selected", colors.selectfg)])
+        try:
+            style = self.root.style
+            colors = style.colors
+            style.configure("TNotebook.Tab", padding=(14, 8))
+            style.map("TNotebook.Tab",
+                      background=[("selected", colors.primary)],
+                      foreground=[("selected", colors.selectfg)])
+        except Exception as e:
+            print("Erreur style onglets (non bloquant):", e)
 
     def populate_notebook(self):
         for tab_id in self.notebook.tabs():
@@ -1572,13 +1591,29 @@ class AutoClickerApp:
 
 
 if __name__ == "__main__":
-    _startup_settings = load_app_settings()
-    root = tb.Window(themename="darkly")  # theme de base valide, remplace juste apres
-    register_wels_themes(root.style)
-    _initial_theme = _startup_settings.get("theme", "wels_dark")
     try:
-        root.style.theme_use(_initial_theme)
+        _startup_settings = load_app_settings()
+        root = tb.Window(themename="darkly")  # theme de base valide, remplace juste apres si possible
+        _wels_available = register_wels_themes(root.style)
+        _initial_theme = _startup_settings.get("theme", "wels_dark")
+        if not _wels_available and _initial_theme.startswith("wels_"):
+            _initial_theme = "darkly"
+        try:
+            root.style.theme_use(_initial_theme)
+        except Exception as e:
+            print("Theme demande indisponible, repli sur darkly:", e)
+            try:
+                root.style.theme_use("darkly")
+            except Exception:
+                pass
+        app = AutoClickerApp(root)
+        root.mainloop()
     except Exception:
-        root.style.theme_use("wels_dark")
-    app = AutoClickerApp(root)
-    root.mainloop()
+        import traceback
+        crash_log = os.path.join(BASE_DIR, "crash_log.txt")
+        try:
+            with open(crash_log, "w", encoding="utf-8") as f:
+                f.write(traceback.format_exc())
+        except Exception:
+            pass
+        raise
