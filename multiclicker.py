@@ -879,10 +879,27 @@ class AutoClickerApp:
         except Exception as e:
             print("Erreur style onglets (non bloquant):", e)
 
+    def _ensure_scrollbar_style(self):
+        """Cree une fois un style de scrollbar fin et gris neutre (independant de l'accent orange)."""
+        if getattr(self, "_scrollbar_style_ready", False):
+            return
+        try:
+            style = self.root.style
+            colors = style.colors
+            style.configure("Wels.Vertical.TScrollbar",
+                              troughcolor=colors.bg, background=colors.border,
+                              bordercolor=colors.bg, arrowsize=10, width=8, relief="flat")
+            style.map("Wels.Vertical.TScrollbar", background=[("active", colors.secondary)])
+            self._scrollbar_style_ready = True
+        except Exception as e:
+            print("Erreur style scrollbar:", e)
+
     def make_scrollable(self, parent):
-        """Enveloppe un onglet dans une zone qui defile verticalement (molette + barre)
-        des que le contenu depasse la hauteur visible. Renvoie le frame interieur dans
-        lequel construire le contenu normalement."""
+        """Enveloppe un contenu dans une zone qui defile verticalement, mais UNIQUEMENT si
+        le contenu depasse effectivement la hauteur visible. La barre est fine, grise, et ne
+        s'affiche que pendant le defilement (molette ou glisser), puis disparait apres 2s
+        d'inactivite. Renvoie le frame interieur dans lequel construire le contenu normalement."""
+        self._ensure_scrollbar_style()
         try:
             bg = self.root.style.colors.bg
         except Exception:
@@ -891,25 +908,64 @@ class AutoClickerApp:
         canvas = tk.Canvas(parent, highlightthickness=0, bd=0)
         if bg:
             canvas.configure(bg=bg)
-        scrollbar = tb.Scrollbar(parent, orient="vertical", command=canvas.yview, bootstyle="round")
+        scrollbar = tb.Scrollbar(parent, orient="vertical", command=canvas.yview,
+                                   style="Wels.Vertical.TScrollbar")
         inner = tb.Frame(canvas)
 
-        inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
+        state = {"visible": False, "needs_scroll": False, "hide_job": None}
+
+        def hide_scrollbar():
+            if state["visible"]:
+                scrollbar.pack_forget()
+                state["visible"] = False
+            state["hide_job"] = None
+
+        def show_scrollbar():
+            if not state["needs_scroll"]:
+                return
+            if not state["visible"]:
+                scrollbar.pack(side="right", fill="y")
+                state["visible"] = True
+            if state["hide_job"]:
+                canvas.after_cancel(state["hide_job"])
+            state["hide_job"] = canvas.after(2000, hide_scrollbar)
+
+        def update_scrollregion(_e=None):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+            content_h = inner.winfo_reqheight()
+            visible_h = canvas.winfo_height()
+            state["needs_scroll"] = content_h > visible_h
+            if not state["needs_scroll"]:
+                hide_scrollbar()
+
+        inner.bind("<Configure>", update_scrollregion)
         window_id = canvas.create_window((0, 0), window=inner, anchor="nw")
         canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.bind("<Configure>", lambda e: canvas.itemconfig(window_id, width=e.width))
+
+        def _on_canvas_configure(e):
+            canvas.itemconfig(window_id, width=e.width)
+            update_scrollregion()
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        def _on_mousewheel(ev):
+            if not state["needs_scroll"]:
+                return
+            canvas.yview_scroll(int(-1 * (ev.delta / 120)), "units")
+            show_scrollbar()
 
         def _on_enter(_e):
-            canvas.bind_all("<MouseWheel>", lambda ev: canvas.yview_scroll(int(-1 * (ev.delta / 120)), "units"))
+            canvas.bind_all("<MouseWheel>", _on_mousewheel)
 
         def _on_leave(_e):
             canvas.unbind_all("<MouseWheel>")
 
         canvas.bind("<Enter>", _on_enter)
         canvas.bind("<Leave>", _on_leave)
+        scrollbar.bind("<Button-1>", lambda e: state["hide_job"] and canvas.after_cancel(state["hide_job"]))
+        scrollbar.bind("<ButtonRelease-1>", lambda e: show_scrollbar())
 
         canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        # La scrollbar n'est PAS empaquetee ici : elle n'apparait que si besoin (voir show_scrollbar)
         return inner
 
     def populate_notebook(self):
@@ -926,7 +982,7 @@ class AutoClickerApp:
 
         profiles_frame = tb.Frame(self.notebook, padding=20)
         self.notebook.add(profiles_frame, text="  📂 Profils  ")
-        self.build_profiles_tab(self.make_scrollable(profiles_frame))
+        self.build_profiles_tab(profiles_frame)
 
         game_frame = tb.Frame(self.notebook, padding=16)
         self.notebook.add(game_frame, text="  🎮 Rouages  ")
@@ -934,11 +990,11 @@ class AutoClickerApp:
 
         feedback_frame = tb.Frame(self.notebook, padding=20)
         self.notebook.add(feedback_frame, text="  💬 Aide  ")
-        self.build_feedback_tab(self.make_scrollable(feedback_frame))
+        self.build_feedback_tab(feedback_frame)
 
         settings_frame = tb.Frame(self.notebook, padding=20)
         self.notebook.add(settings_frame, text="  ⚙️ Paramètres  ")
-        self.build_settings_tab(self.make_scrollable(settings_frame))
+        self.build_settings_tab(settings_frame)
 
         future_frame = tb.Frame(self.notebook, padding=20)
         self.notebook.add(future_frame, text="  + Ajouter  ")
@@ -958,7 +1014,7 @@ class AutoClickerApp:
             frame = tb.Frame(sub_notebook, padding=20)
             icon = MODULE_ICONS.get(module.name, "⚙️")
             sub_notebook.add(frame, text=f"  {icon} {module.name}  ")
-            self.build_module_ui(self.make_scrollable(frame), module)
+            self.build_module_ui(frame, module)
 
     # ================= TABS DES SYSTEMES =================
     def build_module_ui(self, frame, module):
@@ -974,7 +1030,9 @@ class AutoClickerApp:
 
         tb.Separator(frame).pack(fill="x", pady=14)
 
-        hk_card = tb.Frame(frame, bootstyle="secondary")
+        body = self.make_scrollable(frame)
+
+        hk_card = tb.Frame(body, bootstyle="secondary")
         hk_card.pack(fill="x", pady=(0, 16))
         hk_inner = tb.Frame(hk_card, padding=12)
         hk_inner.pack(fill="x")
@@ -995,61 +1053,61 @@ class AutoClickerApp:
                    command=lambda m=module: self.unassign_hotkey(m)).pack(side="left", padx=(8, 0))
 
         if isinstance(module, AlternateClickModule):
-            tb.Label(frame, text="Délai entre les clics", font=("Segoe UI", 10, "bold")).pack(anchor="w")
-            delay_val_lbl = tb.Label(frame, text=f"{module.delay_ms} ms", bootstyle="light")
+            tb.Label(body, text="Délai entre les clics", font=("Segoe UI", 10, "bold")).pack(anchor="w")
+            delay_val_lbl = tb.Label(body, text=f"{module.delay_ms} ms", bootstyle="light")
             delay_val_lbl.pack(anchor="w", pady=(2, 6))
 
             def on_delay_change(v, m=module, lbl=delay_val_lbl):
                 m.delay_ms = int(float(v))
                 lbl.config(text=f"{m.delay_ms} ms")
 
-            tb.Scale(frame, from_=0, to=100, orient="horizontal", bootstyle="secondary",
+            tb.Scale(body, from_=0, to=100, orient="horizontal", bootstyle="secondary",
                       value=module.delay_ms, command=on_delay_change).pack(fill="x")
-            tb.Label(frame, text="0 ms = vitesse maximale • alterne toujours clic gauche / clic droit",
+            tb.Label(body, text="0 ms = vitesse maximale • alterne toujours clic gauche / clic droit",
                       font=("Segoe UI", 8), bootstyle="secondary").pack(anchor="w", pady=(4, 0))
 
         elif isinstance(module, AutoClickModule):
-            self.build_action_picker(frame, module, "Touche / bouton à cliquer")
+            self.build_action_picker(body, module, "Touche / bouton à cliquer")
 
-            tb.Label(frame, text="Intervalle entre les clics", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(16, 0))
-            delay_val_lbl = tb.Label(frame, text=f"{module.delay_ms} ms", bootstyle="light")
+            tb.Label(body, text="Intervalle entre les clics", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(16, 0))
+            delay_val_lbl = tb.Label(body, text=f"{module.delay_ms} ms", bootstyle="light")
             delay_val_lbl.pack(anchor="w", pady=(2, 6))
 
             def on_delay_change2(v, m=module, lbl=delay_val_lbl):
                 m.delay_ms = int(float(v))
                 lbl.config(text=f"{m.delay_ms} ms")
 
-            tb.Scale(frame, from_=1, to=1000, orient="horizontal", bootstyle="secondary",
+            tb.Scale(body, from_=1, to=1000, orient="horizontal", bootstyle="secondary",
                       value=module.delay_ms, command=on_delay_change2).pack(fill="x")
 
         elif isinstance(module, HoldModule):
-            self.build_action_picker(frame, module, "Touche / bouton à maintenir")
-            tb.Label(frame, text="Appuie sur le déclencheur pour maintenir, rappuie pour relâcher.",
+            self.build_action_picker(body, module, "Touche / bouton à maintenir")
+            tb.Label(body, text="Appuie sur le déclencheur pour maintenir, rappuie pour relâcher.",
                       font=("Segoe UI", 9), bootstyle="secondary", wraplength=560, justify="left").pack(anchor="w", pady=(16, 0))
 
         elif isinstance(module, AntiAFKModule):
-            tb.Label(frame, text="Mode", font=("Segoe UI", 10, "bold")).pack(anchor="w")
+            tb.Label(body, text="Mode", font=("Segoe UI", 10, "bold")).pack(anchor="w")
             mode_var = tk.StringVar(value=module.mode)
-            row = tb.Frame(frame)
+            row = tb.Frame(body)
             row.pack(anchor="w", pady=(4, 12))
             tb.Radiobutton(row, text="Bouger la souris", variable=mode_var, value="mouse", bootstyle="toolbutton",
                             command=lambda m=module, v=mode_var: setattr(m, "mode", v.get())).pack(side="left", padx=(0, 6))
             tb.Radiobutton(row, text="Appuyer sur une touche", variable=mode_var, value="key", bootstyle="toolbutton",
                             command=lambda m=module, v=mode_var: setattr(m, "mode", v.get())).pack(side="left")
 
-            self.build_action_picker(frame, module, "Touche à appuyer (si mode « touche »)")
+            self.build_action_picker(body, module, "Touche à appuyer (si mode « touche »)")
 
-            tb.Label(frame, text="Intervalle entre les actions", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(16, 0))
-            delay_val_lbl = tb.Label(frame, text=f"{module.interval_sec} s", bootstyle="light")
+            tb.Label(body, text="Intervalle entre les actions", font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(16, 0))
+            delay_val_lbl = tb.Label(body, text=f"{module.interval_sec} s", bootstyle="light")
             delay_val_lbl.pack(anchor="w", pady=(2, 6))
 
             def on_interval_change(v, m=module, lbl=delay_val_lbl):
                 m.interval_sec = int(float(v))
                 lbl.config(text=f"{m.interval_sec} s")
 
-            tb.Scale(frame, from_=5, to=600, orient="horizontal", bootstyle="secondary",
+            tb.Scale(body, from_=5, to=600, orient="horizontal", bootstyle="secondary",
                       value=module.interval_sec, command=on_interval_change).pack(fill="x")
-            tb.Label(frame, text="Empêche d'être déconnecté pour inactivité en simulant une activité périodique.",
+            tb.Label(body, text="Empêche d'être déconnecté pour inactivité en simulant une activité périodique.",
                       font=("Segoe UI", 8), bootstyle="secondary", wraplength=560, justify="left").pack(anchor="w", pady=(6, 0))
 
     def build_action_picker(self, frame, module, title):
@@ -1238,11 +1296,11 @@ class AutoClickerApp:
 
         shop_frame = tb.Frame(sub_notebook, padding=14)
         sub_notebook.add(shop_frame, text="  🛒 Boutique  ")
-        self.build_shop_ui(self.make_scrollable(shop_frame))
+        self.build_shop_ui(shop_frame)
 
         index_frame = tb.Frame(sub_notebook, padding=14)
         sub_notebook.add(index_frame, text="  📖 Index  ")
-        self.build_index_ui(self.make_scrollable(index_frame))
+        self.build_index_ui(index_frame)
 
         rebirth_frame = tb.Frame(sub_notebook, padding=14)
         sub_notebook.add(rebirth_frame, text="  ✨ Rebirth  ")
