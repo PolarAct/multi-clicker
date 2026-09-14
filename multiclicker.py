@@ -1,5 +1,5 @@
 """
-Multi-Clicker - Systeme modulaire d'automatisation de clics/touches
+Wel's Toolbox - Systeme modulaire d'automatisation de clics/touches
 --------------------------------------------------------------------
 Systemes :
   1. Clic Alterné       - alterne clic gauche/droit le plus vite possible
@@ -29,6 +29,7 @@ import tkinter as tk
 
 import ttkbootstrap as tb
 from ttkbootstrap.constants import *
+from ttkbootstrap.style import ThemeDefinition, Colors
 
 from pynput import mouse, keyboard
 
@@ -41,7 +42,40 @@ SETTINGS_FILE = os.path.join(BASE_DIR, "settings.json")
 STARTUP_FOLDER = os.path.join(os.environ.get("APPDATA", BASE_DIR), "Microsoft", "Windows", "Start Menu", "Programs", "Startup")
 STARTUP_BAT_NAME = "MultiClicker_AutoStart.bat"
 
-AVAILABLE_THEMES = ["darkly", "cyborg", "superhero", "solar", "vapor", "cosmo"]
+AVAILABLE_THEMES = ["wels_dark", "wels_light"]
+
+# ---- Themes personnalises "Wel's" (palette inspiree de la photo de profil) ----
+THEME_LABELS = {
+    "wels_dark": "Wel's (Sombre)",
+    "wels_light": "Wel's (Clair)",
+}
+
+
+def build_wels_theme_defs():
+    dark_colors = Colors(
+        primary="#FF7A1A", secondary="#3B3630", success="#4F9D4A", info="#3B82C4",
+        warning="#F5D547", danger="#E63946", bg="#1E1A16", fg="#F5EDE0",
+        selectbg="#FF7A1A", selectfg="#1E1A16", border="#4A3B2E",
+        inputfg="#F5EDE0", inputbg="#2A241D", light="#F5EDE0", dark="#1E1A16",
+    )
+    light_colors = Colors(
+        primary="#E8650A", secondary="#8A7B6C", success="#3D8B37", info="#2F6DA8",
+        warning="#C99A1D", danger="#C7362F", bg="#F5EDE0", fg="#241E18",
+        selectbg="#E8650A", selectfg="#F5EDE0", border="#D8C9B0",
+        inputfg="#241E18", inputbg="#FFFFFF", light="#F5EDE0", dark="#241E18",
+    )
+    return [
+        ThemeDefinition(name="wels_dark", themetype="dark", colors=dark_colors),
+        ThemeDefinition(name="wels_light", themetype="light", colors=light_colors),
+    ]
+
+
+def register_wels_themes(style):
+    for theme_def in build_wels_theme_defs():
+        try:
+            style.register_theme(theme_def)
+        except Exception as e:
+            print("Erreur enregistrement theme:", e)
 
 
 def load_app_settings():
@@ -49,12 +83,12 @@ def load_app_settings():
         try:
             with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
-                defaults = {"theme": "darkly", "toasts_enabled": True}
+                defaults = {"theme": "wels_dark", "toasts_enabled": True}
                 defaults.update(data)
                 return defaults
         except Exception:
             pass
-    return {"theme": "darkly", "toasts_enabled": True}
+    return {"theme": "wels_dark", "toasts_enabled": True}
 
 
 def save_app_settings(data):
@@ -82,7 +116,7 @@ def set_startup_enabled(enabled):
             os.remove(path)
 
 # ---- Mise a jour automatique via GitHub ----
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.2.0"
 GITHUB_USER = "PolarAct"         # <-- ton pseudo GitHub
 GITHUB_REPO = "multi-clicker"    # <-- le nom de ton depot
 GITHUB_BRANCH = "main"
@@ -133,7 +167,7 @@ def send_discord_message(content):
         "allowed_mentions": {"users": [DISCORD_USER_ID]},
         "embeds": [
             {
-                "title": "📩 Nouveau message — Multi-Clicker",
+                "title": "📩 Nouveau message — Wel's Toolbox",
                 "description": content[:4000],
                 "color": 0x5865F2,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -492,8 +526,6 @@ ACHIEVEMENTS = [
      "desc": "Effectue ton premier Rebirth.", "check": lambda s: s["rebirths"] >= 1},
     {"id": "five_rebirth", "name": "Cycle Éternel", "icon": "🌀",
      "desc": "Effectue 5 Rebirths.", "check": lambda s: s["rebirths"] >= 5},
-    {"id": "easter_egg", "name": "Le Ninja Libanais", "icon": "🥷",
-     "desc": "Un secret que seul Wel connaissait...", "check": lambda s: s.get("easter_egg_found", False)},
 ]
 
 
@@ -509,7 +541,6 @@ def default_game_state():
         "achievements_unlocked": [],
         "shards": 0,
         "rebirths": 0,
-        "easter_egg_found": False,
     }
 
 
@@ -618,12 +649,6 @@ class GameState:
         self.data["real_actions_total"] += 1
         self.data["real_actions_pending"] += 1
 
-    def trigger_easter_egg(self):
-        if not self.data.get("easter_egg_found", False):
-            self.data["easter_egg_found"] = True
-            return True
-        return False
-
     def tick(self, dt):
         prod = self.total_production()
         if prod > 0 and dt > 0:
@@ -649,7 +674,7 @@ class GameState:
 class AutoClickerApp:
     def __init__(self, root):
         self.root = root
-        self.root.title("Multi-Clicker")
+        self.root.title("Wel's Toolbox")
         self.root.geometry("680x780")
         self.root.resizable(False, False)
 
@@ -658,8 +683,9 @@ class AutoClickerApp:
         self.hotkey_labels = {}
         self.action_labels = {}
         self._game_save_counter = 0
-        self._egg_clicks = []
         self.settings = load_app_settings()
+
+        self._load_icons()
 
         # ---> Pour ajouter un nouveau systeme d'automatisation, ajoute-le ici <---
         self.modules = [
@@ -684,6 +710,24 @@ class AutoClickerApp:
         self.root.after(30000, self.autosave_loop)
         self.root.after(3000, lambda: self.check_for_updates(manual=False))
 
+    def _load_icons(self):
+        """Charge le logo (plume orange) pour la barre de titre Windows et pour le header de l'app."""
+        icon_path = os.path.join(BASE_DIR, "icon.ico")
+        if os.path.exists(icon_path):
+            try:
+                self.root.iconbitmap(icon_path)
+            except Exception as e:
+                print("Erreur chargement icone fenetre:", e)
+
+        header_icon_path = os.path.join(BASE_DIR, "icon_header.png")
+        self._header_icon = None
+        if os.path.exists(header_icon_path):
+            try:
+                self._header_icon = tk.PhotoImage(file=header_icon_path)
+            except Exception as e:
+                print("Erreur chargement icone header:", e)
+                self._header_icon = None
+
     # ================= UI GENERALE =================
     def build_ui(self):
         self.apply_notebook_style()
@@ -692,14 +736,22 @@ class AutoClickerApp:
         header.pack(fill="x")
         title_row = tb.Frame(header, bootstyle="dark")
         title_row.pack(fill="x", padx=20, pady=(18, 0))
-        title_lbl = tb.Label(title_row, text="⚡ Multi-Clicker", font=("Segoe UI", 20, "bold"),
-                               bootstyle="inverse-dark", cursor="hand2")
-        title_lbl.pack(side="left")
-        title_lbl.bind("<Button-1>", self.on_title_click)
+
+        title_left = tb.Frame(title_row, bootstyle="dark")
+        title_left.pack(side="left")
+        if self._header_icon is not None:
+            tb.Label(title_left, image=self._header_icon, bootstyle="inverse-dark").pack(side="left", padx=(0, 10))
+        title_text_col = tb.Frame(title_left, bootstyle="dark")
+        title_text_col.pack(side="left")
+        tb.Label(title_text_col, text="Wel's", font=("Segoe UI", 20, "bold"),
+                  bootstyle="inverse-dark").pack(anchor="w")
+        tb.Label(title_text_col, text="TOOLBOX", font=("Segoe UI", 9, "bold"),
+                  bootstyle="inverse-dark").pack(anchor="w")
+
         tb.Button(title_row, text="Vérifier les mises à jour", bootstyle="outline-info",
                    command=lambda: self.check_for_updates(manual=True)).pack(side="right")
         tb.Label(header, text=f"Système modulaire d'automatisation de clics et de touches • v{APP_VERSION}",
-                  font=("Segoe UI", 10), bootstyle="inverse-dark").pack(anchor="w", padx=20, pady=(0, 16))
+                  font=("Segoe UI", 10), bootstyle="inverse-dark").pack(anchor="w", padx=20, pady=(6, 16))
 
         self.notebook = tb.Notebook(self.root, bootstyle="dark")
         self.notebook.pack(fill="both", expand=True, padx=16, pady=16)
@@ -713,26 +765,14 @@ class AutoClickerApp:
                    command=self.reset_all_hotkeys).pack(side="right")
 
     def apply_notebook_style(self):
-        """Met en valeur l'onglet actuellement selectionne (fond colore), quel que soit
-        le notebook (principal ou sous-notebooks) puisque le style s'applique globalement."""
+        """Met en valeur l'onglet actuellement selectionne (fond colore = couleur primaire
+        du theme actif), quel que soit le notebook (principal ou sous-notebooks)."""
         style = self.root.style
+        colors = style.colors
         style.configure("TNotebook.Tab", padding=(14, 8))
         style.map("TNotebook.Tab",
-                  background=[("selected", "#5865F2")],
-                  foreground=[("selected", "#ffffff")])
-
-    def on_title_click(self, event=None):
-        """Easter egg : clique 7 fois rapidement sur le titre."""
-        now = time.time()
-        self._egg_clicks = [t for t in self._egg_clicks if now - t < 1.5] + [now]
-        if len(self._egg_clicks) >= 7:
-            self._egg_clicks = []
-            found = self.game.trigger_easter_egg()
-            if found:
-                self._process_game_events(0)
-                self.refresh_game_ui()
-                self.game.save()
-            self.show_toast("🇱🇧 Yalla Wel ! Dattebayo ! 🍜🥷", "warning")
+                  background=[("selected", colors.primary)],
+                  foreground=[("selected", colors.selectfg)])
 
     def populate_notebook(self):
         for tab_id in self.notebook.tabs():
@@ -1219,7 +1259,7 @@ class AutoClickerApp:
             return
         try:
             from ttkbootstrap.toast import ToastNotification
-            ToastNotification(title="Multi-Clicker", message=message, duration=3500, bootstyle=style).show_toast()
+            ToastNotification(title="Wel's Toolbox", message=message, duration=3500, bootstyle=style).show_toast()
         except Exception as e:
             print("Toast erreur:", e)
 
@@ -1288,7 +1328,11 @@ class AutoClickerApp:
     def _check_updates_thread(self, manual):
         try:
             import requests
-            resp = requests.get(VERSION_CHECK_URL, timeout=8)
+            # Le CDN de GitHub (raw.githubusercontent.com) met les fichiers en cache.
+            # On ajoute un parametre unique a chaque requete pour forcer une version fraiche.
+            cache_bust = f"?nocache={int(time.time())}"
+            resp = requests.get(VERSION_CHECK_URL + cache_bust, timeout=8,
+                                  headers={"Cache-Control": "no-cache"})
             resp.raise_for_status()
             info = resp.json()
             remote_version = info.get("version", "0.0.0")
@@ -1308,14 +1352,28 @@ class AutoClickerApp:
         result = Messagebox.yesno(message, title="Mise à jour disponible")
         if result == "Yes":
             self.show_toast("Téléchargement de la mise à jour...", "info")
-            threading.Thread(target=self._download_update_thread, daemon=True).start()
+            threading.Thread(target=self._download_update_thread, args=(remote_version,), daemon=True).start()
 
-    def _download_update_thread(self):
+    def _download_update_thread(self, expected_version):
         try:
+            import re
             import requests
-            resp = requests.get(SCRIPT_UPDATE_URL, timeout=15)
+            cache_bust = f"?nocache={int(time.time())}"
+            resp = requests.get(SCRIPT_UPDATE_URL + cache_bust, timeout=15,
+                                  headers={"Cache-Control": "no-cache"})
             resp.raise_for_status()
             new_code = resp.text
+
+            # Verifie que le fichier telecharge correspond bien a la version annoncee
+            # (evite d'installer une version encore en cache cote CDN par erreur).
+            match = re.search(r'APP_VERSION\s*=\s*"([^"]+)"', new_code)
+            downloaded_version = match.group(1) if match else None
+            if downloaded_version != expected_version:
+                self.root.after(0, lambda: self.show_toast(
+                    "Le fichier téléchargé n'est pas encore à jour côté serveur (cache). "
+                    "Réessaie dans 1-2 minutes.", "warning"))
+                return
+
             script_path = os.path.abspath(__file__)
             tmp_path = script_path + ".new"
             with open(tmp_path, "w", encoding="utf-8") as f:
@@ -1349,14 +1407,16 @@ class AutoClickerApp:
         tb.Label(frame, text="⚙️ Paramètres", font=("Segoe UI", 14, "bold")).pack(anchor="w", pady=(0, 16))
 
         tb.Label(frame, text="Thème visuel", font=("Segoe UI", 10, "bold")).pack(anchor="w")
-        theme_var = tk.StringVar(value=self.settings.get("theme", "darkly"))
-        theme_combo = tb.Combobox(frame, state="readonly", values=AVAILABLE_THEMES,
+        current_theme_key = self.settings.get("theme", "wels_dark")
+        theme_var = tk.StringVar(value=THEME_LABELS.get(current_theme_key, current_theme_key))
+        theme_combo = tb.Combobox(frame, state="readonly", values=list(THEME_LABELS.values()),
                                     textvariable=theme_var, bootstyle="info")
         theme_combo.pack(fill="x", pady=(4, 18))
-        theme_combo.bind("<<ComboboxSelected>>", lambda e: self.on_theme_change(theme_var.get()))
+        theme_combo.bind("<<ComboboxSelected>>",
+                           lambda e: self.on_theme_change(self._theme_key_from_label(theme_var.get())))
 
         startup_var = tk.BooleanVar(value=is_startup_enabled())
-        tb.Checkbutton(frame, text="Lancer Multi-Clicker au démarrage de Windows",
+        tb.Checkbutton(frame, text="Lancer Wel's Toolbox au démarrage de Windows",
                         variable=startup_var, bootstyle="round-toggle",
                         command=lambda: self.on_toggle_startup(startup_var.get())).pack(anchor="w", pady=(0, 12))
 
@@ -1370,10 +1430,17 @@ class AutoClickerApp:
         tb.Label(frame, text="Zone dangereuse", font=("Segoe UI", 11, "bold"), bootstyle="danger").pack(anchor="w", pady=(0, 10))
         tb.Button(frame, text="Réinitialiser mes données (déclencheurs, profils, jeu)", bootstyle="outline-warning",
                    command=self.on_reset_data).pack(anchor="w", pady=(0, 10))
-        tb.Button(frame, text="🗑️ Désinstaller Multi-Clicker de mon PC", bootstyle="danger",
+        tb.Button(frame, text="🗑️ Désinstaller Wel's Toolbox de mon PC", bootstyle="danger",
                    command=self.on_uninstall).pack(anchor="w")
         tb.Label(frame, text="Supprime définitivement tous les fichiers, dossiers et données de l'application.",
                   font=("Segoe UI", 8), bootstyle="secondary", wraplength=560, justify="left").pack(anchor="w", pady=(6, 0))
+
+    @staticmethod
+    def _theme_key_from_label(label):
+        for key, value in THEME_LABELS.items():
+            if value == label:
+                return key
+        return "wels_dark"
 
     def on_theme_change(self, theme_name):
         try:
@@ -1419,12 +1486,12 @@ class AutoClickerApp:
     def on_uninstall(self):
         from ttkbootstrap.dialogs import Messagebox
         confirm = Messagebox.yesno(
-            "Cette action va supprimer DÉFINITIVEMENT Multi-Clicker de ton PC :\n"
+            "Cette action va supprimer DÉFINITIVEMENT Wel's Toolbox de ton PC :\n"
             "• Tous les fichiers de l'application\n"
             "• Tes configurations, profils et ta progression du jeu\n"
             "• Le raccourci sur le Bureau et le démarrage automatique\n\n"
             "Cette action est IRRÉVERSIBLE. Continuer ?",
-            title="⚠️ Désinstaller Multi-Clicker")
+            title="⚠️ Désinstaller Wel's Toolbox")
         if confirm != "Yes":
             return
         confirm2 = Messagebox.yesno(
@@ -1437,7 +1504,7 @@ class AutoClickerApp:
     def _perform_uninstall(self):
         install_dir = BASE_DIR
         desktop = os.path.join(os.path.expanduser("~"), "Desktop")
-        shortcut_path = os.path.join(desktop, "Multi-Clicker.lnk")
+        shortcut_path = os.path.join(desktop, "Wel's Toolbox.lnk")
         startup_path = os.path.join(STARTUP_FOLDER, STARTUP_BAT_NAME)
         cleanup_bat = os.path.join(os.environ.get("TEMP", BASE_DIR), "multiclicker_uninstall.bat")
 
@@ -1506,6 +1573,12 @@ class AutoClickerApp:
 
 if __name__ == "__main__":
     _startup_settings = load_app_settings()
-    root = tb.Window(themename=_startup_settings.get("theme", "darkly"))
+    root = tb.Window(themename="darkly")  # theme de base valide, remplace juste apres
+    register_wels_themes(root.style)
+    _initial_theme = _startup_settings.get("theme", "wels_dark")
+    try:
+        root.style.theme_use(_initial_theme)
+    except Exception:
+        root.style.theme_use("wels_dark")
     app = AutoClickerApp(root)
     root.mainloop()

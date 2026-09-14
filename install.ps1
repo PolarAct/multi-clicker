@@ -54,14 +54,43 @@ foreach ($cmd in @("python", "py")) {
 
 if (-not $PythonCmd) {
     Write-Host ""
-    Write-Host "Python n'est pas installe (ou pas dans le PATH)." -ForegroundColor Yellow
-    Write-Host "Ouverture de la page de telechargement Python..."
-    Start-Process "https://www.python.org/downloads/"
-    Write-Host ""
-    Write-Host "IMPORTANT : lors de l'installation, coche bien 'Add Python to PATH'." -ForegroundColor Yellow
-    Write-Host "Une fois Python installe, relance ce script d'installation."
-    Read-Host "Appuie sur Entree pour fermer"
-    exit 0
+    Write-Host "Python n'est pas installe. Tentative d'installation automatique via winget..." -ForegroundColor Yellow
+    $wingetOk = $false
+    try {
+        winget --version | Out-Null
+        winget install --id Python.Python.3.12 -e --silent --accept-package-agreements --accept-source-agreements
+        $wingetOk = $true
+    } catch {
+        $wingetOk = $false
+    }
+
+    if ($wingetOk) {
+        # Rafraichir le PATH de la session courante pour detecter le python fraichement installe
+        $env:Path = [System.Environment]::GetEnvironmentVariable("Path", "Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path", "User")
+        Start-Sleep -Seconds 3
+        foreach ($cmd in @("python", "py")) {
+            try {
+                $v = & $cmd --version 2>&1
+                if ($v -match "Python") {
+                    $PythonCmd = $cmd
+                    break
+                }
+            } catch {}
+        }
+    }
+
+    if (-not $PythonCmd) {
+        Write-Host ""
+        Write-Host "Installation automatique impossible sur ce PC (winget indisponible ou echec)." -ForegroundColor Yellow
+        Write-Host "Ouverture de la page de telechargement Python..."
+        Start-Process "https://www.python.org/downloads/"
+        Write-Host ""
+        Write-Host "IMPORTANT : lors de l'installation, coche bien 'Add Python to PATH'." -ForegroundColor Yellow
+        Write-Host "Une fois Python installe, relance ce script d'installation."
+        Read-Host "Appuie sur Entree pour fermer"
+        exit 0
+    }
+    Write-Host "Python installe automatiquement avec succes." -ForegroundColor Green
 }
 
 Write-Host "Python detecte : $PythonCmd"
@@ -74,18 +103,16 @@ Write-Host ""
 Write-Host "Creation du raccourci sur le Bureau..."
 $WshShell = New-Object -ComObject WScript.Shell
 $Desktop = $WshShell.SpecialFolders("Desktop")
-$Shortcut = $WshShell.CreateShortcut("$Desktop\Multi-Clicker.lnk")
+$Shortcut = $WshShell.CreateShortcut("$Desktop\Wel's Toolbox.lnk")
 $Shortcut.TargetPath = "$InstallDir\Lancer_MultiClicker.bat"
 $Shortcut.WorkingDirectory = $InstallDir
-$Shortcut.IconLocation = "shell32.dll, 137"
-$Shortcut.Description = "Lancer Multi-Clicker"
+$Shortcut.IconLocation = "$InstallDir\icon.ico"
+$Shortcut.Description = "Lancer Wel's Toolbox"
 $Shortcut.Save()
 
 Write-Host ""
 Write-Host "=== Installation terminee ! ===" -ForegroundColor Green
 Write-Host "Un raccourci 'Multi-Clicker' a ete cree sur le Bureau."
-Write-Host ""
-$launch = Read-Host "Lancer l'application maintenant ? (o/n)"
-if ($launch -eq "o" -or $launch -eq "O") {
-    Start-Process "$InstallDir\Lancer_MultiClicker.bat"
-}
+Write-Host "Lancement de l'application..."
+Start-Sleep -Seconds 2
+Start-Process "$InstallDir\Lancer_MultiClicker.bat"

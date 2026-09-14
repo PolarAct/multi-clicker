@@ -1,4 +1,4 @@
 {
-  "version": "1.1.0",
-  "notes": "Ajout de l'onglet Parametres (theme, demarrage automatique, notifications, reinitialisation, desinstallation). L'onglet actif est maintenant mis en valeur visuellement. Petit easter egg cache. Correction de l'envoi Discord (passage a 'requests')."
+  "version": "1.1.1",
+  "notes": "Refonte..."
 }
