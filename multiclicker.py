@@ -66,12 +66,14 @@ def build_wels_theme_defs():
             warning="#F5D547", danger="#E63946", bg="#1E1A16", fg="#F5EDE0",
             selectbg="#FF7A1A", selectfg="#1E1A16", border="#4A3B2E",
             inputfg="#F5EDE0", inputbg="#2A241D", light="#F5EDE0", dark="#1E1A16",
+            active="#3A2F22",
         )
         light_colors = Colors(
             primary="#E8650A", secondary="#8A7B6C", success="#3D8B37", info="#2F6DA8",
             warning="#C99A1D", danger="#C7362F", bg="#F5EDE0", fg="#241E18",
             selectbg="#E8650A", selectfg="#F5EDE0", border="#D8C9B0",
             inputfg="#241E18", inputbg="#FFFFFF", light="#F5EDE0", dark="#241E18",
+            active="#EADFC8",
         )
         return [
             ThemeDefinition(name="wels_dark", themetype="dark", colors=dark_colors),
