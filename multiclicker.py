@@ -150,7 +150,7 @@ def set_startup_enabled(enabled):
             os.remove(path)
 
 # ---- Mise a jour automatique via GitHub ----
-APP_VERSION = "1.3.1"
+APP_VERSION = "1.4.0"
 GITHUB_USER = "PolarAct"         # <-- ton pseudo GitHub
 GITHUB_REPO = "multi-clicker"    # <-- le nom de ton depot
 GITHUB_BRANCH = "main"
@@ -824,34 +824,57 @@ class AutoClickerApp:
             self._normal_geometry = self.root.geometry()
             self.notebook.pack_forget()
             self.footer.pack_forget()
-            if self.compact_panel is None:
-                self.build_compact_panel()
-            self.refresh_compact_panel()
+            self.build_compact_panel()  # reconstruit a chaque ouverture (reflete la personnalisation courante)
             self.compact_panel.pack(fill="both", expand=True, padx=16, pady=(0, 16))
-            self.root.geometry("320x300")
+            self.root.geometry("360x420")
         else:
             if self.compact_panel is not None:
-                self.compact_panel.pack_forget()
+                self.compact_panel.destroy()
+                self.compact_panel = None
+                self.compact_rows = {}
             self.notebook.pack(fill="both", expand=True, padx=16, pady=16)
             self.footer.pack(fill="x", padx=16, pady=(0, 14))
             self.root.geometry(self._normal_geometry)
 
     def build_compact_panel(self):
+        if self.compact_panel is not None:
+            self.compact_panel.destroy()
+
         self.compact_panel = tb.Frame(self.root)
         tb.Label(self.compact_panel, text="Automatisations", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 10))
+        tb.Separator(self.compact_panel).pack(fill="x", pady=(0, 10))
+
+        body = self.make_scrollable(self.compact_panel)
+
+        selected = set(self.settings.get("compact_modules", [m.name for m in self.modules]))
+        visible_modules = [m for m in self.modules if m.name in selected] or self.modules
+
         self.compact_rows = {}
-        for module in self.modules:
-            row = tb.Frame(self.compact_panel)
+        for module in visible_modules:
+            row = tb.Frame(body, bootstyle="secondary")
             row.pack(fill="x", pady=3)
-            icon = MODULE_ICONS.get(module.name, "⚙️")
-            tb.Label(row, text=f"{icon} {module.name}", font=("Segoe UI", 9)).pack(side="left")
-            badge = tb.Label(row, text="Actif" if module.active else "Inactif",
+            inner = tb.Frame(row, padding=(8, 6))
+            inner.pack(fill="x")
+
+            right = tb.Frame(inner)
+            right.pack(side="right")
+            tb.Button(right, text="⏻", width=3, bootstyle="outline-primary",
+                       command=lambda m=module: m.toggle()).pack(side="right")
+            badge = tb.Label(right, text="Actif" if module.active else "Inactif",
                                bootstyle="primary-inverse" if module.active else "secondary-inverse",
                                font=("Segoe UI", 8, "bold"), padding=(6, 2))
-            badge.pack(side="right")
-            tb.Button(row, text="⏻", width=3, bootstyle="outline-primary",
-                       command=lambda m=module: m.toggle()).pack(side="right", padx=(0, 6))
+            badge.pack(side="right", padx=(0, 6))
+
+            icon = MODULE_ICONS.get(module.name, "⚙️")
+            name_lbl = tb.Label(inner, text=f"{icon} {module.name}", font=("Segoe UI", 9),
+                                  wraplength=140, justify="left")
+            name_lbl.pack(side="left", fill="x", expand=True, anchor="w")
+
             self.compact_rows[module] = badge
+
+        if len(visible_modules) < len(self.modules):
+            tb.Label(self.compact_panel, text="Personnalisable dans Paramètres.",
+                      font=("Segoe UI", 7), bootstyle="secondary").pack(anchor="w", pady=(8, 0))
 
     def refresh_compact_panel(self):
         if not self.compact_rows:
@@ -1207,15 +1230,18 @@ class AutoClickerApp:
     # ================= PROFILS =================
     def build_profiles_tab(self, frame):
         tb.Label(frame, text="📂 Profils", font=("Segoe UI", 14, "bold")).pack(anchor="w")
-        tb.Label(frame, text="Sauvegarde des configurations complètes (déclencheurs, cadences, cibles) "
-                              "et bascule entre elles en un clic.",
-                  font=("Segoe UI", 9), bootstyle="secondary", wraplength=560, justify="left").pack(anchor="w", pady=(4, 16))
+        tb.Separator(frame).pack(fill="x", pady=14)
+        body = self.make_scrollable(frame)
 
-        self.profiles_combo = tb.Combobox(frame, state="readonly", bootstyle="light")
+        tb.Label(body, text="Sauvegarde des configurations complètes (déclencheurs, cadences, cibles) "
+                              "et bascule entre elles en un clic.",
+                  font=("Segoe UI", 9), bootstyle="secondary", wraplength=560, justify="left").pack(anchor="w", pady=(0, 16))
+
+        self.profiles_combo = tb.Combobox(body, state="readonly", bootstyle="light")
         self.profiles_combo.pack(fill="x", pady=(0, 10))
         self.refresh_profiles_list()
 
-        btn_row = tb.Frame(frame)
+        btn_row = tb.Frame(body)
         btn_row.pack(fill="x", pady=(0, 10))
         tb.Button(btn_row, text="Charger", bootstyle="primary",
                    command=self.on_load_profile).pack(side="left", padx=(0, 6))
@@ -1224,7 +1250,7 @@ class AutoClickerApp:
         tb.Button(btn_row, text="Supprimer", bootstyle="outline-secondary",
                    command=self.on_delete_profile).pack(side="left")
 
-        self.profiles_status_lbl = tb.Label(frame, text="", font=("Segoe UI", 9), bootstyle="secondary")
+        self.profiles_status_lbl = tb.Label(body, text="", font=("Segoe UI", 9), bootstyle="secondary")
         self.profiles_status_lbl.pack(anchor="w", pady=(8, 0))
 
     def refresh_profiles_list(self):
@@ -1309,6 +1335,7 @@ class AutoClickerApp:
         self.refresh_game_ui()
 
     def build_shop_ui(self, frame):
+        frame = self.make_scrollable(frame)
         self.gen_rows = {}
         tb.Label(frame, text="Générateurs", font=("Segoe UI", 12, "bold")).pack(anchor="w", pady=(0, 8))
         for gen in GENERATORS:
@@ -1344,6 +1371,7 @@ class AutoClickerApp:
             self.upg_rows[up["id"]] = {"buy_btn": buy_btn}
 
     def build_index_ui(self, frame):
+        frame = self.make_scrollable(frame)
         tb.Label(frame, text="Débloque des succès en jouant et en utilisant l'app !",
                   font=("Segoe UI", 9), bootstyle="secondary").pack(anchor="w", pady=(0, 10))
         grid = tb.Frame(frame)
@@ -1469,18 +1497,21 @@ class AutoClickerApp:
     # ================= AIDE / SUGGESTIONS (DISCORD) =================
     def build_feedback_tab(self, frame):
         tb.Label(frame, text="💬 Aide & Suggestions", font=("Segoe UI", 14, "bold")).pack(anchor="w")
-        tb.Label(frame, text="Un bug, une idée de système à ajouter, une question ? Écris ton message "
-                              "ci-dessous : il est envoyé directement au développeur.",
-                  font=("Segoe UI", 9), bootstyle="secondary", wraplength=560, justify="left").pack(anchor="w", pady=(4, 14))
+        tb.Separator(frame).pack(fill="x", pady=14)
+        body = self.make_scrollable(frame)
 
-        text_card = tb.Frame(frame, bootstyle="secondary")
+        tb.Label(body, text="Un bug, une idée de système à ajouter, une question ? Écris ton message "
+                              "ci-dessous : il est envoyé directement au développeur.",
+                  font=("Segoe UI", 9), bootstyle="secondary", wraplength=560, justify="left").pack(anchor="w", pady=(0, 14))
+
+        text_card = tb.Frame(body, bootstyle="secondary")
         text_card.pack(fill="x", pady=(0, 10))
         self.feedback_text = tk.Text(text_card, height=8, wrap="word", bg="#2b2b2b", fg="white",
                                        insertbackground="white", relief="flat", font=("Segoe UI", 10),
                                        padx=10, pady=10)
         self.feedback_text.pack(fill="both", expand=True, padx=2, pady=2)
 
-        btn_row = tb.Frame(frame)
+        btn_row = tb.Frame(body)
         btn_row.pack(fill="x")
         self.feedback_send_btn = tb.Button(btn_row, text="Envoyer", bootstyle="primary",
                                              command=self.on_send_feedback)
@@ -1607,9 +1638,11 @@ class AutoClickerApp:
 
     # ================= PARAMETRES =================
     def build_settings_tab(self, frame):
-        tb.Label(frame, text="⚙️ Paramètres", font=("Segoe UI", 14, "bold")).pack(anchor="w", pady=(0, 16))
+        tb.Label(frame, text="⚙️ Paramètres", font=("Segoe UI", 14, "bold")).pack(anchor="w")
+        tb.Separator(frame).pack(fill="x", pady=14)
+        body = self.make_scrollable(frame)
 
-        tb.Label(frame, text="Thème visuel", font=("Segoe UI", 10, "bold")).pack(anchor="w")
+        tb.Label(body, text="Thème visuel", font=("Segoe UI", 10, "bold")).pack(anchor="w")
         try:
             registered = set(self.root.style.theme_names())
         except Exception:
@@ -1622,31 +1655,55 @@ class AutoClickerApp:
         if current_theme_key not in available_labels:
             current_theme_key = next(iter(available_labels))
         theme_var = tk.StringVar(value=available_labels.get(current_theme_key, current_theme_key))
-        theme_combo = tb.Combobox(frame, state="readonly", values=list(available_labels.values()),
+        theme_combo = tb.Combobox(body, state="readonly", values=list(available_labels.values()),
                                     textvariable=theme_var, bootstyle="light")
         theme_combo.pack(fill="x", pady=(4, 18))
         theme_combo.bind("<<ComboboxSelected>>",
                            lambda e: self.on_theme_change(self._theme_key_from_label(theme_var.get())))
 
         startup_var = tk.BooleanVar(value=is_startup_enabled())
-        tb.Checkbutton(frame, text="Lancer Wel's Toolbox au démarrage de Windows",
+        tb.Checkbutton(body, text="Lancer Wel's Toolbox au démarrage de Windows",
                         variable=startup_var, bootstyle="round-toggle",
                         command=lambda: self.on_toggle_startup(startup_var.get())).pack(anchor="w", pady=(0, 12))
 
         toast_var = tk.BooleanVar(value=self.settings.get("toasts_enabled", True))
-        tb.Checkbutton(frame, text="Afficher les notifications (succès, mises à jour...)",
+        tb.Checkbutton(body, text="Afficher les notifications (succès, mises à jour...)",
                         variable=toast_var, bootstyle="round-toggle",
                         command=lambda: self.on_toggle_toasts(toast_var.get())).pack(anchor="w", pady=(0, 24))
 
-        tb.Separator(frame).pack(fill="x", pady=(0, 20))
+        tb.Separator(body).pack(fill="x", pady=(0, 20))
 
-        tb.Label(frame, text="Zone dangereuse", font=("Segoe UI", 11, "bold"), bootstyle="danger").pack(anchor="w", pady=(0, 10))
-        tb.Button(frame, text="Réinitialiser mes données (déclencheurs, profils, jeu)", bootstyle="outline-secondary",
+        tb.Label(body, text="Mode compact", font=("Segoe UI", 11, "bold")).pack(anchor="w", pady=(0, 4))
+        tb.Label(body, text="Choisis quels systèmes apparaissent dans le mode compact (🗗 en haut).",
+                  font=("Segoe UI", 8), bootstyle="secondary", wraplength=560, justify="left").pack(anchor="w", pady=(0, 8))
+        compact_selection = set(self.settings.get("compact_modules", [m.name for m in self.modules]))
+        for module in self.modules:
+            var = tk.BooleanVar(value=module.name in compact_selection)
+            tb.Checkbutton(body, text=f"{MODULE_ICONS.get(module.name, '⚙️')} {module.name}",
+                            variable=var, bootstyle="round-toggle",
+                            command=lambda m=module, v=var: self.on_toggle_compact_module(m, v.get())).pack(anchor="w", pady=(0, 4))
+
+        tb.Separator(body).pack(fill="x", pady=(16, 20))
+
+        tb.Label(body, text="Zone dangereuse", font=("Segoe UI", 11, "bold"), bootstyle="danger").pack(anchor="w", pady=(0, 10))
+        tb.Button(body, text="Réinitialiser mes données (déclencheurs, profils, jeu)", bootstyle="outline-secondary",
                    command=self.on_reset_data).pack(anchor="w", pady=(0, 10))
-        tb.Button(frame, text="🗑️ Désinstaller Wel's Toolbox de mon PC", bootstyle="danger",
+        tb.Button(body, text="🗑️ Désinstaller Wel's Toolbox de mon PC", bootstyle="danger",
                    command=self.on_uninstall).pack(anchor="w")
-        tb.Label(frame, text="Supprime définitivement tous les fichiers, dossiers et données de l'application.",
+        tb.Label(body, text="Supprime définitivement tous les fichiers, dossiers et données de l'application.",
                   font=("Segoe UI", 8), bootstyle="secondary", wraplength=560, justify="left").pack(anchor="w", pady=(6, 0))
+
+    def on_toggle_compact_module(self, module, enabled):
+        current = set(self.settings.get("compact_modules", [m.name for m in self.modules]))
+        if enabled:
+            current.add(module.name)
+        else:
+            current.discard(module.name)
+        self.settings["compact_modules"] = list(current)
+        save_app_settings(self.settings)
+        if self.compact_mode:
+            self.build_compact_panel()
+            self.compact_panel.pack(fill="both", expand=True, padx=16, pady=(0, 16))
 
     @staticmethod
     def _theme_key_from_label(label):

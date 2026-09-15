@@ -1,4 +1,4 @@
 {
-  "version": "1.3.2",
-  "notes": "..."
+  "version": "1.4.0",
+  "notes": "Scroll intelligent : n'apparait que si le contenu deborde vraiment, barre fine et grise qui se masque 2s apres inactivite. Le titre de chaque onglet reste fixe en haut, seul le contenu (boutons/options) defile. Mode compact corrige : scroll ajoute, texte qui ne coupe plus, et personnalisable dans Parametres (choix des systemes affiches)."
 }
